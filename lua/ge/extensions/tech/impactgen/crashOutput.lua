@@ -3,6 +3,7 @@
 -- file, You can obtain one at http://beamng.com/bCDDL-1.1.txt
 
 local M = {}
+local lpack = require('lpack')
 
 local outParts = {}
 outParts['etk800_body'] = {'chassis'}
@@ -81,6 +82,14 @@ local renderIdx = 1
 local exporter = extensions.util_export
 
 local state = nop
+
+-- Gets vehicle data from vehicle lua
+local data = {}
+function GetVehicleData(inputData)
+  data = lpack.decode(inputData)
+end
+
+M.GetVehicleData = GetVehicleData
 
 local function fuzzyTableLookup(d, n)
   for k, v in pairs(d) do
@@ -459,6 +468,9 @@ local function continuePole(request, angle, pos, throttle, config, ego)
   else
     ego:queueLuaCommand('input.event("brake", ' ..  tostring(-throttle) .. ', 1)')
   end
+  
+  v_data = data[ego:getId()]
+  log(data[ego:getId()].electrics.airspeed)
 
   local next = function()
     request:sendACK('ImpactGenPoleRan')

@@ -534,4 +534,23 @@ M.evaluateVehicleDamage = function()
   return {damageScores = scores, beams = beams}
 end
 
+M.getVehiculeData = function()
+  log("I", "damageEvaluation", "Evaluating vehicle damage.")
+  local data = {}
+
+  data["wheelspeed"] = electrics.values.wheelspeed
+  data["airspeed"] = electrics.values.airspeed
+  data["throttle"] = input.throttle
+  data["brake"] = input.brake
+  data["gear_A"] = electrics.values.gear_A
+  data["x"] = getPosition().x
+  data["y"] = getPosition().y
+  data["z"] = getPosition().z
+  data["gx"] = gx
+  data["gy"] = gy
+  data["gz"] = gz
+
+  return data
+end
+
 return M
