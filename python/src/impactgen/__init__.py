@@ -1,6 +1,8 @@
+# pylint: disable = missing-module-docstring
+# pylint: disable = missing-function-docstring
+
 import os
 
-from . import materialmngr
 from .impactgen import ImpactGenerator
 
 
