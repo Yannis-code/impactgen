@@ -15,23 +15,47 @@ class ImpactGenerator:
     gridmap = {
         'level': 'gridmap_v2',
 
-        'a_spawn': (-268, 56, 100.5),
-        'b_spawn': (-275, 56, 100.5),
+        'vehicle': [
+            {
+                'name': 'vehicle_a',
+                'model': 'etk800',
+                'position': (-268, 56, 100.5)
+            },
+            {
+                'name': 'vehicle_b',
+                'model': 'etk800',
+                'position': (-275, 56, 100.5)
+            }
+        ],
+        'crashs': {
+            'linear': {
+                'vehicle_a': {
+                    'position': (-277.275, 87.664, 100.303),
+                    'orientation': (0, 0, 180)
+                },
+                'vehicle_b': {
+                    'position': (-267.275, 200.059, 100.303),
+                    'orientation': (0, 0, 0)
+                }
+            }
+        },
+    }
 
-        'pole_pos': (-285, 56, 100.5),
+    wca = {
+        'level': 'west_coast_usa',
 
-        'a_spawn_wall': (-269.604, 57.547, 100.5),
-        'a_rot_wall':   (0.557, 0.118, -180.000),
-
-        'linear_pos_a': (-269.604, 57.547, 100.5),
-        'linear_pos_b': (-269.604, 75, 100.5),
-        'linear_rot_b': (0, 0, -180.000),
-
-        't_pos_a': (-269.604, 57.547, 100.5),
-        't_pos_b': (-269.604, 75, 100.5),
-        't_rot_b': (0, 0, 90),
-
-        'ref_pos': (-268, 56, 100.5),
+        'vehicle': [
+            {
+                'name': 'vehicle_a',
+                'model': 'etk800',
+                'position': (-712.760, 105.048, 118.650)
+            },
+            {
+                'name': 'vehicle_b',
+                'model': 'etk800',
+                'position': (-719.422, 105.044, 100.5)
+            }
+        ],
     }
 
     def __init__(self, bng_home, output, single=False):
@@ -45,16 +69,18 @@ class ImpactGenerator:
 
         scenario_props = ImpactGenerator.gridmap
 
-        self.vehicle_a = Vehicle('vehicle_a', model='etk800')
-        self.vehicle_b = Vehicle('vehicle_b', model='etk800')
+        self.vehicle_a = Vehicle(
+            scenario_props['vehicle'][0]['name'], model=scenario_props['vehicle'][0]['model'])
+        self.vehicle_b = Vehicle(
+            scenario_props['vehicle'][1]['name'], model=scenario_props['vehicle'][1]['model'])
 
         self.setup_sensors()
 
         self.scenario = Scenario(scenario_props['level'], 'impactgen')
         self.scenario.add_vehicle(
-            self.vehicle_a, pos=scenario_props['a_spawn'])
+            self.vehicle_a, pos=scenario_props['vehicle'][0]['position'])
         self.scenario.add_vehicle(
-            self.vehicle_b, pos=scenario_props['b_spawn'])
+            self.vehicle_b, pos=scenario_props['vehicle'][1]['position'])
 
     def init_settings(self):
         self.bng.settings.set_particles_enabled(False)
@@ -113,16 +139,27 @@ class ImpactGenerator:
 
     def run_linear_crash(self):
         log.info('Running linear crash setting.')
-        pos = (-277.275, 87.664, 100.303)
-        targetpos = (-267.275, 200.059, 100.303)
 
-        self.teleport(self.vehicle_a, pos, (0, 0, 180))
-        self.teleport(self.vehicle_b, targetpos, (0, 0, 180))
+        veh_a_pos = ImpactGenerator.gridmap['crashs']['linear']["vehicle_a"]['position']
+        veh_a_ang = ImpactGenerator.gridmap['crashs']['linear']["vehicle_a"]['orientation']
+        self.teleport(self.vehicle_a, veh_a_pos, veh_a_ang)
+
+        veh_a_pos = ImpactGenerator.gridmap['crashs']['linear']["vehicle_b"]['position']
+        veh_a_ang = ImpactGenerator.gridmap['crashs']['linear']["vehicle_b"]['orientation']
+        self.teleport(self.vehicle_b, veh_a_pos, veh_a_ang)
 
         self.bng.control.step(60)
 
         self.vehicle_a.ai.set_target(self.vehicle_b.vid)
         self.vehicle_a.ai.set_speed(15)
+
+    def run_no_crash(self):
+        log.info('Running linear crash setting.')
+
+        self.bng.control.step(60)
+
+        self.vehicle_a.ai.set_mode("span")
+        self.vehicle_a.ai.set_aggression(0.1)
 
     def stop_car(self, vehicle):
         vehicle.control(steering=0, throttle=0,
