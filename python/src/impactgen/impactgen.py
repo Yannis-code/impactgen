@@ -2,6 +2,7 @@
 # pylint: disable = missing-class-docstring
 # pylint: disable = missing-function-docstring
 
+import os
 import logging as log
 from pathlib import Path
 from scipy.spatial.transform import Rotation
@@ -148,7 +149,7 @@ class ImpactGenerator:
 
     def run_linear_crash(self):
         log.info('Running linear crash setting.')
-        self.open_output_file("../../output_test.csv")
+        self.open_output_file(os.path.abspath("../../output_test.csv"))
         self.log_header()
 
         veh_a_pos = ImpactGenerator.gridmap['crashs']['linear']["vehicle_a"]['position']
@@ -181,10 +182,11 @@ class ImpactGenerator:
     def open_output_file(self, path):
         try:
             self.output = open(path, "w+")
+            log.info(f"File opened: {self.output.name}")
         except:
             raise Exception(f"{path} can't be opened!")
 
-    def close_output_file(self, path):
+    def close_output_file(self):
         try:
             self.output = self.output.close()
         except:
