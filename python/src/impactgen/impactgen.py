@@ -2,16 +2,16 @@
 # pylint: disable = missing-class-docstring
 # pylint: disable = missing-function-docstring
 
-import os
+import os, time
 import logging as log
-import win32pipe
-import win32file
-import win32api
+# import win32pipe
+# import win32file
+# import win32api
 from pathlib import Path
 from scipy.spatial.transform import Rotation
 
 from beamngpy import BeamNGpy, Scenario, Vehicle
-from beamngpy.sensors import IMU, Electrics, Damage, State, Timer
+from beamngpy.sensors import GForces, Electrics, Damage, State, Timer
 
 
 class ImpactGenerator:
@@ -66,11 +66,11 @@ class ImpactGenerator:
         self.bng_home = bng_home
         self.output = Path(output)
         self.single = single
-        self.dataPipeA = win32pipe.CreateNamedPipe(
-            r'\\.\pipe\impactgenA', win32pipe.PIPE_ACCESS_OUTBOUND, win32pipe.PIPE_TYPE_MESSAGE | win32pipe.PIPE_NOWAIT, 2, 65536, 65536, 300, None)
+        # self.dataPipeA = win32pipe.CreateNamedPipe(
+        #     r'\\.\pipe\impactgenA', win32pipe.PIPE_ACCESS_OUTBOUND, win32pipe.PIPE_TYPE_MESSAGE | win32pipe.PIPE_NOWAIT, 2, 65536, 65536, 300, None)
 
-        self.dataPipeB = win32pipe.CreateNamedPipe(
-            r'\\.\pipe\impactgenA', win32pipe.PIPE_ACCESS_OUTBOUND, win32pipe.PIPE_TYPE_MESSAGE | win32pipe.PIPE_NOWAIT, 2, 65536, 65536, 300, None)
+        # self.dataPipeB = win32pipe.CreateNamedPipe(
+        #     r'\\.\pipe\impactgenA', win32pipe.PIPE_ACCESS_OUTBOUND, win32pipe.PIPE_TYPE_MESSAGE | win32pipe.PIPE_NOWAIT, 2, 65536, 65536, 300, None)
 
         self.bng = BeamNGpy('localhost', 64256, home=bng_home)
 
@@ -109,8 +109,8 @@ class ImpactGenerator:
         log.debug('Setting annotation properties.')
 
     def setup_sensors(self):
-        self.vehicle_a_imu = IMU((0, 0, 0), debug=True)
-        self.vehicle_b_imu = IMU((0, 0, 0), debug=True)
+        self.vehicle_a_gforce = GForces()
+        self.vehicle_b_gforce = GForces()
 
         self.vehicle_a_damage = Damage()
         self.vehicle_b_damage = Damage()
@@ -125,9 +125,9 @@ class ImpactGenerator:
         self.vehicle_b_timer = Timer()
 
         self.vehicle_a.sensors.attach(
-            "vehicle_a_sensor", self.vehicle_a_imu)
+            "vehicle_a_sensor", self.vehicle_a_gforce)
         self.vehicle_b.sensors.attach(
-            "vehicle_b_sensor", self.vehicle_b_imu)
+            "vehicle_b_sensor", self.vehicle_b_gforce)
 
         self.vehicle_a.sensors.attach(
             "vehicle_a_electrics", self.vehicle_a_electrics)
@@ -194,21 +194,34 @@ class ImpactGenerator:
     def stop_car(self, vehicle):
         vehicle.control(steering=0, throttle=0,
                         brake=1, parkingbrake=1, gear=0)
-        self.bng.control.step(5*60)
+        # self.bng.control.step(5*60)
+        # wait for 5 seconds
+        timerNow=0
+        while timerNow < 5*60:
+            self.bng.control.step(1)
+            timerNow += 1
+            self.vehicle_b.sensors.poll()
+            self.vehicle_a.sensors.poll()
+            self.log_line()
+            time.sleep(1/60)
+
+
 
     def log_header(self):
-        self.output.write(f"time,airspeed,gx,gy,gz,crash_flag\n")
+        self.output.write(f"time,airspeed,gx,gy,gz,damage,crash_flag\n")
 
     def get_csv_line(self):
-        time = self.vehicle_a_timer["timer"]
-        airspeed = self.vehicle_a_electrics["airspeed"]
-        gx = self.vehicle_a_imu["gx"]
-        gy = self.vehicle_a_imu["gy"]
-        gz = self.vehicle_a_imu["gz"]
-        current_damage = self.vehicle_a_damage["damage"]
-        crash_flag = current_damage > self.prev_frame_damage
+        time = self.vehicle_b_timer["time"]
+        airspeed = self.vehicle_b_electrics["airspeed"]
+        damage = self.vehicle_b_damage["damage"]
+        gx = self.vehicle_b_gforce["gx"]
+        gy = self.vehicle_b_gforce["gy"]
+        gz = self.vehicle_b_gforce["gz"]
+        current_damage = self.vehicle_b_damage["damage"]
+        log.info(f'Current damage {round(current_damage)}')
+        crash_flag = current_damage > self.prev_frame_damage*1.0005
         self.prev_frame_damage = current_damage
-        return f"{time},{airspeed},{gx},{gy},{gz},{crash_flag}\n"
+        return f"{time},{airspeed},{gx},{gy},{gz},{round(damage)},{crash_flag}\n"
 
     def log_line(self):
         self.output.write(self.get_csv_line())
@@ -220,17 +233,18 @@ class ImpactGenerator:
             log.info('Setting up BeamNG instance.')
             self.setup()
 
-            win32pipe.ConnectNamedPipe(self.dataPipeA, None)
-            win32pipe.ConnectNamedPipe(self.dataPipeB, None)
+            # win32pipe.ConnectNamedPipe(self.dataPipeA, None)
+            # win32pipe.ConnectNamedPipe(self.dataPipeB, None)
 
             # pylint: disable-next = unused-variable
-            for i in range(3):
+            for i in range(1):
                 self.run_linear_crash()
         finally:
-            win32api.CloseHandle(self.dataPipeA)
-            win32api.CloseHandle(self.dataPipeB)
+            # win32api.CloseHandle(self.dataPipeA)
+            # win32api.CloseHandle(self.dataPipeB)
             log.info('Closing BeamNG instance.')
             self.bng.close()
 
     def log_to_pipe(self, pipe, data):
-        win32file.WriteFile(pipe, data)
+        # win32file.WriteFile(pipe, data)
+        pass
