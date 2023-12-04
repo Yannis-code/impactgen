@@ -4,7 +4,9 @@
 
 import os
 import logging as log
-import win32pipe, win32file, win32api
+import win32pipe
+import win32file
+import win32api
 from pathlib import Path
 from scipy.spatial.transform import Rotation
 
@@ -65,11 +67,11 @@ class ImpactGenerator:
         self.output = Path(output)
         self.single = single
         self.dataPipeA = win32pipe.CreateNamedPipe(
-                        r'\\.\pipe\impactgenA', win32pipe.PIPE_ACCESS_OUTBOUND, win32pipe.PIPE_TYPE_MESSAGE | win32pipe.PIPE_NOWAIT, 2, 65536, 65536, 300, None)
-                    
+            r'\\.\pipe\impactgenA', win32pipe.PIPE_ACCESS_OUTBOUND, win32pipe.PIPE_TYPE_MESSAGE | win32pipe.PIPE_NOWAIT, 2, 65536, 65536, 300, None)
+
         self.dataPipeB = win32pipe.CreateNamedPipe(
-                        r'\\.\pipe\impactgenA', win32pipe.PIPE_ACCESS_OUTBOUND, win32pipe.PIPE_TYPE_MESSAGE | win32pipe.PIPE_NOWAIT, 2, 65536, 65536, 300, None)
-        
+            r'\\.\pipe\impactgenA', win32pipe.PIPE_ACCESS_OUTBOUND, win32pipe.PIPE_TYPE_MESSAGE | win32pipe.PIPE_NOWAIT, 2, 65536, 65536, 300, None)
+
         self.bng = BeamNGpy('localhost', 64256, home=bng_home)
 
         self.scenario = None
@@ -155,21 +157,31 @@ class ImpactGenerator:
 
     def run_linear_crash(self):
         log.info('Running linear crash setting.')
-        self.open_output_file(os.path.abspath("../../output_test.csv"))
-        self.log_header()
+        with open(os.path.abspath("../../output_test.csv"), "w+") as self.output:
+            log.info(f"File opened: {self.output.name}")
+            self.log_header()
 
-        veh_a_pos = ImpactGenerator.gridmap['crashs']['linear']["vehicle_a"]['position']
-        veh_a_ang = ImpactGenerator.gridmap['crashs']['linear']["vehicle_a"]['orientation']
-        self.teleport(self.vehicle_a, veh_a_pos, veh_a_ang)
+            veh_a_pos = ImpactGenerator.gridmap['crashs']['linear']["vehicle_a"]['position']
+            veh_a_ang = ImpactGenerator.gridmap['crashs']['linear']["vehicle_a"]['orientation']
+            self.teleport(self.vehicle_a, veh_a_pos, veh_a_ang)
 
-        veh_a_pos = ImpactGenerator.gridmap['crashs']['linear']["vehicle_b"]['position']
-        veh_a_ang = ImpactGenerator.gridmap['crashs']['linear']["vehicle_b"]['orientation']
-        self.teleport(self.vehicle_b, veh_a_pos, veh_a_ang)
+            veh_a_pos = ImpactGenerator.gridmap['crashs']['linear']["vehicle_b"]['position']
+            veh_a_ang = ImpactGenerator.gridmap['crashs']['linear']["vehicle_b"]['orientation']
+            self.teleport(self.vehicle_b, veh_a_pos, veh_a_ang)
 
-        self.bng.control.step(60)
+            self.bng.control.step(60)
 
-        self.vehicle_a.ai.set_target(self.vehicle_b.vid)
-        self.vehicle_a.ai.set_speed(15)
+            self.vehicle_a.ai.set_target(self.vehicle_b.vid)
+            self.vehicle_a.ai.set_speed(15)
+
+            while True:
+                self.vehicle_b.sensors.poll()
+                self.vehicle_a.sensors.poll()
+                self.log_line()
+                if self.vehicle_a_damage['damage'] > 10:
+                    self.vehicle_a.ai.set_mode("disabled")
+                    self.stop_car(self.vehicle_a)
+                    break
 
     def run_no_crash(self):
         log.info('Running linear crash setting.')
@@ -183,20 +195,6 @@ class ImpactGenerator:
         vehicle.control(steering=0, throttle=0,
                         brake=1, parkingbrake=1, gear=0)
         self.bng.control.step(5*60)
-        self.close_output_file()
-
-    def open_output_file(self, path):
-        try:
-            self.output = open(path, "w+")
-            log.info(f"File opened: {self.output.name}")
-        except:
-            raise Exception(f"{path} can't be opened!")
-
-    def close_output_file(self):
-        try:
-            self.output = self.output.close()
-        except:
-            raise Exception("File can't be closed!")
 
     def log_header(self):
         self.output.write(f"time,airspeed,gx,gy,gz,crash_flag\n")
@@ -221,21 +219,13 @@ class ImpactGenerator:
         try:
             log.info('Setting up BeamNG instance.')
             self.setup()
-            
+
             win32pipe.ConnectNamedPipe(self.dataPipeA, None)
             win32pipe.ConnectNamedPipe(self.dataPipeB, None)
 
             # pylint: disable-next = unused-variable
             for i in range(3):
                 self.run_linear_crash()
-
-                while True:
-                    self.vehicle_b.sensors.poll()
-                    self.vehicle_a.sensors.poll()
-                    if self.vehicle_a_damage['damage'] > 10:
-                        self.vehicle_a.ai.set_mode("disabled")
-                        self.stop_car(self.vehicle_a)
-                        break
         finally:
             win32api.CloseHandle(self.dataPipeA)
             win32api.CloseHandle(self.dataPipeB)
