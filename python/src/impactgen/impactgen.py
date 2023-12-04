@@ -196,7 +196,7 @@ class ImpactGenerator:
         try:
             self.output = self.output.close()
         except:
-            raise Exception(f"{path} can't be closed!")
+            raise Exception("file can't be closed!")
 
     def log_header(self):
         self.output.write(f"time,airspeed,gx,gy,gz,crash_flag\n")
@@ -237,7 +237,8 @@ class ImpactGenerator:
                         self.stop_car(self.vehicle_a)
                         break
         finally:
-            win32api.CloseHandle(self.dataPipe)
+            win32api.CloseHandle(self.dataPipeA)
+            win32api.CloseHandle(self.dataPipeB)
             log.info('Closing BeamNG instance.')
             self.bng.close()
 
