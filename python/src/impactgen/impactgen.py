@@ -3,6 +3,7 @@
 # pylint: disable = missing-function-docstring
 
 import logging as log
+import win32pipe, win32file, win32api
 from pathlib import Path
 from scipy.spatial.transform import Rotation
 
@@ -62,7 +63,12 @@ class ImpactGenerator:
         self.bng_home = bng_home
         self.output = Path(output)
         self.single = single
-
+        self.dataPipeA = win32pipe.CreateNamedPipe(
+                        r'\\.\pipe\impactgenA', win32pipe.PIPE_ACCESS_OUTBOUND, win32pipe.PIPE_TYPE_MESSAGE | win32pipe.PIPE_NOWAIT, 2, 65536, 65536, 300, None)
+                    
+        self.dataPipeB = win32pipe.CreateNamedPipe(
+                        r'\\.\pipe\impactgenA', win32pipe.PIPE_ACCESS_OUTBOUND, win32pipe.PIPE_TYPE_MESSAGE | win32pipe.PIPE_NOWAIT, 2, 65536, 65536, 300, None)
+        
         self.bng = BeamNGpy('localhost', 64256, home=bng_home)
 
         self.scenario = None
@@ -172,6 +178,9 @@ class ImpactGenerator:
         try:
             log.info('Setting up BeamNG instance.')
             self.setup()
+            
+            win32pipe.ConnectNamedPipe(self.dataPipeA, None)
+            win32pipe.ConnectNamedPipe(self.dataPipeB, None)
 
             # pylint: disable-next = unused-variable
             for i in range(3):
@@ -185,5 +194,9 @@ class ImpactGenerator:
                         self.stop_car(self.vehicle_a)
                         break
         finally:
+            win32api.CloseHandle(self.dataPipe)
             log.info('Closing BeamNG instance.')
             self.bng.close()
+
+    def log_to_pipe(self, pipe, data):
+        win32file.WriteFile(pipe, data)
