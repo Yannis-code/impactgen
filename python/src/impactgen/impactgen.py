@@ -8,7 +8,7 @@ from pathlib import Path
 from scipy.spatial.transform import Rotation
 
 from beamngpy import BeamNGpy, Scenario, Vehicle
-from beamngpy.sensors import IMU, Electrics, Damage, State
+from beamngpy.sensors import IMU, Electrics, Damage, State, Timer
 
 
 class ImpactGenerator:
@@ -87,6 +87,7 @@ class ImpactGenerator:
             self.vehicle_a, pos=scenario_props['vehicle'][0]['position'])
         self.scenario.add_vehicle(
             self.vehicle_b, pos=scenario_props['vehicle'][1]['position'])
+        self.prev_frame_damage = 0
 
     def init_settings(self):
         self.bng.settings.set_particles_enabled(False)
@@ -117,6 +118,9 @@ class ImpactGenerator:
         self.vehicle_a_state = State()
         self.vehicle_b_state = State()
 
+        self.vehicle_a_timer = Timer()
+        self.vehicle_b_timer = Timer()
+
         self.vehicle_a.sensors.attach(
             "vehicle_a_sensor", self.vehicle_a_imu)
         self.vehicle_b.sensors.attach(
@@ -137,6 +141,11 @@ class ImpactGenerator:
         self.vehicle_b.sensors.attach(
             "vehicle_b_state", self.vehicle_b_state)
 
+        self.vehicle_a.sensors.attach(
+            "vehicle_a_timer", self.vehicle_a_timer)
+        self.vehicle_b.sensors.attach(
+            "vehicle_b_timer", self.vehicle_b_timer)
+
     def teleport(self, vehicle, pos, rot_euler, reset=True):
         rot = Rotation.from_euler("xyz", rot_euler, True)
         rot_quat = rot.as_quat()
@@ -145,6 +154,8 @@ class ImpactGenerator:
 
     def run_linear_crash(self):
         log.info('Running linear crash setting.')
+        self.open_output_file("../../output_test.csv")
+        self.log_header()
 
         veh_a_pos = ImpactGenerator.gridmap['crashs']['linear']["vehicle_a"]['position']
         veh_a_ang = ImpactGenerator.gridmap['crashs']['linear']["vehicle_a"]['orientation']
@@ -171,6 +182,36 @@ class ImpactGenerator:
         vehicle.control(steering=0, throttle=0,
                         brake=1, parkingbrake=1, gear=0)
         self.bng.control.step(5*60)
+        self.close_output_file()
+
+    def open_output_file(self, path):
+        try:
+            self.output = open(path, "w+")
+        except:
+            raise Exception(f"{path} can't be opened!")
+
+    def close_output_file(self, path):
+        try:
+            self.output = self.output.close()
+        except:
+            raise Exception(f"{path} can't be closed!")
+
+    def log_header(self):
+        self.output.write(f"time,airspeed,gx,gy,gz,crash_flag\n")
+
+    def get_csv_line(self):
+        time = self.vehicle_a_timer["timer"]
+        airspeed = self.vehicle_a_electrics["airspeed"]
+        gx = self.vehicle_a_imu["gx"]
+        gy = self.vehicle_a_imu["gy"]
+        gz = self.vehicle_a_imu["gz"]
+        current_damage = self.vehicle_a_damage["damage"]
+        crash_flag = current_damage > self.prev_frame_damage
+        self.prev_frame_damage = current_damage
+        return f"{time},{airspeed},{gx},{gy},{gz},{crash_flag}\n"
+
+    def log_line(self):
+        self.output.write(self.get_csv_line())
 
     def run(self):
         log.info('Starting up BeamNG instance.')
