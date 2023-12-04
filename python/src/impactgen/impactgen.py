@@ -196,7 +196,7 @@ class ImpactGenerator:
         try:
             self.output = self.output.close()
         except:
-            raise Exception("file can't be closed!")
+            raise Exception("File can't be closed!")
 
     def log_header(self):
         self.output.write(f"time,airspeed,gx,gy,gz,crash_flag\n")
