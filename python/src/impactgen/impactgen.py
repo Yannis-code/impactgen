@@ -2,8 +2,10 @@
 # pylint: disable = missing-class-docstring
 # pylint: disable = missing-function-docstring
 
-import os, time
+import os
 import logging as log
+from math import sin, cos, pi
+from random import randrange, random
 # import win32pipe
 # import win32file
 # import win32api
@@ -15,6 +17,31 @@ from beamngpy.sensors import GForces, Electrics, Damage, State, Timer
 
 
 class ImpactGenerator:
+
+    grid = {
+        'level': 'smallgrid',
+
+        'vehicle': [
+            {
+                'name': 'vehicle_a',
+                'model': 'etk800',
+                'position': (0, 0, 0.5)
+            },
+            {
+                'name': 'vehicle_b',
+                'model': 'etk800',
+                'position': (10, 0, 0.5)
+            }
+        ],
+        'crashs': {
+            'linear': {
+                'vehicle_a': {
+                    'position': (0, 0, 0.5),
+                    'orientation': (0, 0, 180)
+                }
+            }
+        },
+    }
 
     gridmap = {
         'level': 'gridmap_v2',
@@ -76,7 +103,7 @@ class ImpactGenerator:
 
         self.scenario = None
 
-        scenario_props = ImpactGenerator.gridmap
+        scenario_props = ImpactGenerator.grid
 
         self.vehicle_a = Vehicle(
             scenario_props['vehicle'][0]['name'], model=scenario_props['vehicle'][0]['model'])
@@ -91,6 +118,12 @@ class ImpactGenerator:
         self.scenario.add_vehicle(
             self.vehicle_b, pos=scenario_props['vehicle'][1]['position'])
         self.prev_frame_damage = 0
+
+        self.sample_per_sec = 10
+        self.last_sample_time = 0
+        self.has_crash = False
+        self.crash_time = 0
+        self.delay_after_crash = 5
 
     def init_settings(self):
         self.bng.settings.set_particles_enabled(False)
@@ -155,9 +188,16 @@ class ImpactGenerator:
         rot_quat = (rot_quat[0], rot_quat[1], rot_quat[2], rot_quat[3])
         vehicle.teleport(pos, rot_quat, reset)
 
+    def get_random_pos(self):
+        distance = randrange(50, 500)
+        alpha = 2 * pi * random()
+        x = cos(alpha) * distance
+        y = sin(alpha) * distance
+        return x, y
+
     def run_linear_crash(self):
         log.info('Running linear crash setting.')
-        with open(os.path.abspath("../../output_test.csv"), "w+") as self.output:
+        with open(os.path.abspath("../data/output_test.csv"), "w+") as self.output:
             log.info(f"File opened: {self.output.name}")
             self.log_header()
 
@@ -174,14 +214,72 @@ class ImpactGenerator:
             self.vehicle_a.ai.set_target(self.vehicle_b.vid)
             self.vehicle_a.ai.set_speed(15)
 
+            self.vehicle_b.sensors.poll()
+            self.vehicle_a.sensors.poll()
+
+            self.last_sample_time = self.vehicle_a_timer["time"]
+            self.has_crash = False
+
             while True:
                 self.vehicle_b.sensors.poll()
                 self.vehicle_a.sensors.poll()
-                self.log_line()
-                if self.vehicle_a_damage['damage'] > 10:
-                    self.vehicle_a.ai.set_mode("disabled")
-                    self.stop_car(self.vehicle_a)
-                    break
+                if self.vehicle_a_timer["time"] - self.last_sample_time >= 1 / self.sample_per_sec:
+                    self.log_line()
+                    self.last_sample_time = self.vehicle_a_timer["time"]
+                if self.has_crash:
+                    if self.vehicle_a_timer["time"] - self.crash_time > self.delay_after_crash:
+                        break
+                else:
+                    if self.vehicle_a_damage['damage'] > 10:
+                        self.has_crash = True
+                        self.last_sample_time = self.vehicle_a_timer["time"]
+                        self.crash_time = self.vehicle_a_timer["time"]
+                        self.vehicle_a.ai.set_mode("disabled")
+                        self.stop_car(self.vehicle_a)
+
+    def run_random_crash(self):
+        log.info('Running random crash setting.')
+        with open(os.path.abspath("../data/output_test.csv"), "w+") as self.output:
+            log.info(f"File opened: {self.output.name}")
+            self.log_header()
+
+            veh_a_pos = ImpactGenerator.grid['crashs']['linear']["vehicle_a"]['position']
+            veh_a_ang = ImpactGenerator.grid['crashs']['linear']["vehicle_a"]['orientation']
+            self.teleport(self.vehicle_a, veh_a_pos, veh_a_ang)
+
+            pos_x, pos_y = self.get_random_pos()
+            self.teleport(self.vehicle_b, (pos_x, pos_y, 0.5), (0, 0, 180))
+
+            self.bng.control.step(60)
+
+            self.vehicle_a.ai.set_target(self.vehicle_b.vid)
+
+            # self.vehicle_b.ai.set_mode("random")
+            self.vehicle_b.ai.set_line([(200, 0, 0.5)], cling=True)
+            self.vehicle_b.ai.set_speed(15)
+
+            self.vehicle_b.sensors.poll()
+            self.vehicle_a.sensors.poll()
+
+            self.last_sample_time = self.vehicle_a_timer["time"]
+            self.has_crash = False
+
+            while True:
+                self.vehicle_b.sensors.poll()
+                self.vehicle_a.sensors.poll()
+                if self.vehicle_a_timer["time"] - self.last_sample_time >= 1 / self.sample_per_sec:
+                    self.log_line()
+                    self.last_sample_time = self.vehicle_a_timer["time"]
+                if self.has_crash:
+                    if self.vehicle_a_timer["time"] - self.crash_time > self.delay_after_crash:
+                        break
+                else:
+                    if self.vehicle_a_damage['damage'] > 10:
+                        self.has_crash = True
+                        self.last_sample_time = self.vehicle_a_timer["time"]
+                        self.crash_time = self.vehicle_a_timer["time"]
+                        self.vehicle_a.ai.set_mode("disabled")
+                        self.stop_car(self.vehicle_a)
 
     def run_no_crash(self):
         log.info('Running linear crash setting.')
@@ -194,18 +292,6 @@ class ImpactGenerator:
     def stop_car(self, vehicle):
         vehicle.control(steering=0, throttle=0,
                         brake=1, parkingbrake=1, gear=0)
-        # self.bng.control.step(5*60)
-        # wait for 5 seconds
-        timerNow=0
-        while timerNow < 5*60:
-            self.bng.control.step(1)
-            timerNow += 1
-            self.vehicle_b.sensors.poll()
-            self.vehicle_a.sensors.poll()
-            self.log_line()
-            time.sleep(1/60)
-
-
 
     def log_header(self):
         self.output.write(f"time,airspeed,gx,gy,gz,damage,crash_flag\n")
@@ -238,7 +324,7 @@ class ImpactGenerator:
 
             # pylint: disable-next = unused-variable
             for i in range(1):
-                self.run_linear_crash()
+                self.run_random_crash()
         finally:
             # win32api.CloseHandle(self.dataPipeA)
             # win32api.CloseHandle(self.dataPipeB)
