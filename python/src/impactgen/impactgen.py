@@ -5,6 +5,9 @@
 import os
 import logging as log
 from math import sin, cos, pi
+from random import randrange
+import scipy.spatial.distance as sp
+import numpy as np
 # import win32pipe
 # import win32file
 # import win32api
@@ -31,14 +34,29 @@ class ImpactGenerator:
 
         self.scenario = None
 
-        self.vehicle_a = Vehicle("vehicle_a", model="covet")
-        self.vehicle_b = Vehicle("vehicle_b", model="covet")
+        self.vehicle_a = Vehicle("vehicle_a", model="vivace")
+        self.vehicle_b = Vehicle("vehicle_b", model="vivace")
+        self.vehicle_c = Vehicle("vehicle_c", model="vivace")
+
+        self.walls = []
+
+        j = 0
+        for i in range(-70, 70, 5):
+            pos_x = (100 + j * 20)
+            wall = StaticObject(name=f'wall-{i}', pos=(pos_x, 0, 0),
+                                rot_quat=angle_to_quat((90, i, 0)), scale=(15, 3, 3),
+                                shape='/art/shapes/objects/s_drywall.dae')
+            self.walls.append(wall)
+            j += 1
 
         self.setup_sensors()
 
         self.scenario = Scenario("smallgrid", 'impactgen')
-        self.scenario.add_vehicle(self.vehicle_a, pos=(0, 0, 0.5))
-        self.scenario.add_vehicle(self.vehicle_b, pos=(10, 0, 0.5))
+        self.scenario.add_vehicle(self.vehicle_a, pos=(50, 0, 0.5))
+        self.scenario.add_vehicle(self.vehicle_b, pos=(60, 0, 0.5))
+        self.scenario.add_vehicle(self.vehicle_c, pos=(70, 0, 0.5))
+        for wall in self.walls:
+            self.scenario.add_object(wall)
 
         self.prev_frame_damage = 0
 
@@ -109,7 +127,6 @@ class ImpactGenerator:
         log.info('Running random crash setting.')
         for i in range(0, 360, step):
             with open(os.path.abspath(f"../data/360/{i}.csv"), "w+") as self.output:
-                self.log_header()
 
                 self.vehicle_a.teleport(
                     (0, 0, 0.2), angle_to_quat((0, 0, i)))
@@ -145,7 +162,7 @@ class ImpactGenerator:
                 self.vehicle_b.recover()
                 self.scenario.restart()
 
-    def run_crash_wall(self, speed, step):
+    def run_crash_360_break(self, speed, step, break_dist):
         log.info('Running random crash setting.')
         for i in range(0, 360, step):
             with open(os.path.abspath(f"../data/360/{i}.csv"), "w+") as self.output:
@@ -173,8 +190,12 @@ class ImpactGenerator:
                         if self.vehicle_a_timer["time"] - self.crash_time > self.delay_after_crash:
                             break
                     else:
-                        self.vehicle_b.control(0, brake=0, parkingbrake=0)
-                        self.vehicle_b.set_velocity(speed / 3.6, 1.0)
+                        pos = self.vehicle_b_state["pos"]
+                        if (np.sqrt(pos[0]**2 + pos[1]**2) > break_dist):
+                            self.vehicle_b.control(0, brake=0, parkingbrake=0)
+                            self.vehicle_b.set_velocity(speed / 3.6, 1.0)
+                        else:
+                            self.vehicle_b.control(0, brake=1, parkingbrake=0)
                         if self.vehicle_a_damage['damage'] > 10:
                             self.has_crash = True
                             self.last_sample_time = self.vehicle_a_timer["time"]
@@ -185,6 +206,56 @@ class ImpactGenerator:
                 self.vehicle_b.recover()
                 self.scenario.restart()
 
+    def run_crash_wall(self, speed, step, break_dist):
+        log.info('Running random crash setting.')
+        j = 0
+        for i in range(-70, 70, step):
+            with open(os.path.abspath(f"../data/360/{i}.csv"), "w+") as self.output:
+                self.log_header()
+
+                pos_x = 100 + j * 20
+                self.vehicle_b.teleport(
+                    (pos_x, 150, 0.2), angle_to_quat((0, 0, 0)))
+
+                self.bng.switch_vehicle(self.vehicle_b)
+
+                self.bng.step(10)
+
+                self.vehicle_b.sensors.poll()
+
+                self.last_sample_time = self.vehicle_b_timer["time"]
+                self.has_crash = False
+                while True:
+                    self.vehicle_b.sensors.poll()
+                    if self.vehicle_b_timer["time"] - self.last_sample_time >= 1 / self.sample_per_sec:
+                        self.log_line()
+                        self.last_sample_time = self.vehicle_b_timer["time"]
+                    if self.has_crash:
+                        if self.vehicle_b_timer["time"] - self.crash_time > self.delay_after_crash:
+                            break
+                    else:
+                        pos = self.vehicle_b_state["pos"]
+                        if (np.sqrt(pos[0]**2 + pos[1]**2) > break_dist):
+                            self.vehicle_b.control(0, brake=0, parkingbrake=0)
+                            self.vehicle_b.set_velocity(speed / 3.6, 1.0)
+                        else:
+                            self.vehicle_b.control(0, brake=1, parkingbrake=0)
+                        if self.vehicle_b_damage['damage'] > 10:
+                            self.has_crash = True
+                            self.last_sample_time = self.vehicle_b_timer["time"]
+                            self.crash_time = self.vehicle_b_timer["time"]
+                            self.stop_car(self.vehicle_b)
+                j += 1
+                self.vehicle_b.recover()
+                self.bng.step(10)
+                self.scenario.restart()
+
+    def run_abs(self, speed, step, break_dist):
+        pass
+
+    def run_abs_avoid(self, speed, step, break_dist):
+        pass
+
     def stop_car(self, vehicle):
         vehicle.control(steering=0, throttle=0,
                         brake=1, parkingbrake=1, gear=0)
@@ -193,13 +264,13 @@ class ImpactGenerator:
         self.output.write(f"time,airspeed,gx,gy,gz,damage,crash_flag\n")
 
     def get_csv_line(self):
-        time = self.vehicle_a_timer["time"]
-        airspeed = self.vehicle_a_electrics["airspeed"]
-        damage = self.vehicle_a_damage["damage"]
-        gx = self.vehicle_a_gforce["gx"]
-        gy = self.vehicle_a_gforce["gy"]
-        gz = self.vehicle_a_gforce["gz"]
-        current_damage = self.vehicle_a_damage["damage"]
+        time = self.vehicle_b_timer["time"]
+        airspeed = self.vehicle_b_electrics["airspeed"]
+        damage = self.vehicle_b_damage["damage"]
+        gx = self.vehicle_b_gforce["gx"]
+        gy = self.vehicle_b_gforce["gy"]
+        gz = self.vehicle_b_gforce["gz"]
+        current_damage = self.vehicle_b_damage["damage"]
         crash_flag = current_damage > self.prev_frame_damage*1.0005
         self.prev_frame_damage = current_damage
         return f"{time},{airspeed},{gx},{gy},{gz},{round(damage)},{crash_flag}\n"
@@ -218,7 +289,7 @@ class ImpactGenerator:
             # win32pipe.ConnectNamedPipe(self.dataPipeB, None)
 
             # pylint: disable-next = unused-variable
-            self.run_crash_wall(110, 45)
+            self.run_crash_wall(110, 5, 30)
         finally:
             # win32api.CloseHandle(self.dataPipeA)
             # win32api.CloseHandle(self.dataPipeB)
