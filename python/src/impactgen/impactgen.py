@@ -22,7 +22,8 @@ class ImpactGenerator:
 
     def __init__(self, bng_home, output, single=False):
         self.bng_home = bng_home
-        self.output = Path(output)
+        self.output_a = None
+        self.output_b = None
         self.single = single
         # self.dataPipeA = win32pipe.CreateNamedPipe(
         #     r'\\.\pipe\impactgenA', win32pipe.PIPE_ACCESS_OUTBOUND, win32pipe.PIPE_TYPE_MESSAGE | win32pipe.PIPE_NOWAIT, 2, 65536, 65536, 300, None)
@@ -126,129 +127,148 @@ class ImpactGenerator:
     def run_crash_360(self, speed, step):
         log.info('Running random crash setting.')
         for i in range(0, 360, step):
-            with open(os.path.abspath(f"../data/360/{i}.csv"), "w+") as self.output:
+            self.output_a = open(os.path.abspath(
+                f"../data/360/{i}_a.csv"), "w+")
+            self.output_b = open(os.path.abspath(
+                f"../data/360/{i}_b.csv"), "w+")
+            self.log_header("a")
+            self.log_header("b")
 
-                self.vehicle_a.teleport(
-                    (0, 0, 0.2), angle_to_quat((0, 0, i)))
-                self.vehicle_b.teleport(
-                    (0, 150, 0.2), angle_to_quat((0, 0, 0)))
+            self.vehicle_a.teleport(
+                (0, 0, 0.2), angle_to_quat((0, 0, i)))
+            self.vehicle_b.teleport(
+                (0, 150, 0.2), angle_to_quat((0, 0, 0)))
 
-                self.bng.step(10)
+            self.bng.step(10)
 
-                self.vehicle_b.sensors.poll()
+            self.vehicle_b.sensors.poll()
+            self.vehicle_a.sensors.poll()
+
+            self.last_sample_time = self.vehicle_a_timer["time"]
+            self.has_crash = False
+            while True:
                 self.vehicle_a.sensors.poll()
-
-                self.last_sample_time = self.vehicle_a_timer["time"]
-                self.has_crash = False
-                while True:
-                    self.vehicle_a.sensors.poll()
-                    self.vehicle_b.sensors.poll()
-                    if self.vehicle_b_timer["time"] - self.last_sample_time >= 1 / self.sample_per_sec:
-                        self.log_line()
+                self.vehicle_b.sensors.poll()
+                if self.vehicle_b_timer["time"] - self.last_sample_time >= 1 / self.sample_per_sec:
+                    self.log_line("a")
+                    self.log_line("b")
+                    self.last_sample_time = self.vehicle_a_timer["time"]
+                if self.has_crash:
+                    if self.vehicle_a_timer["time"] - self.crash_time > self.delay_after_crash:
+                        break
+                else:
+                    self.vehicle_b.control(0, brake=0, parkingbrake=0)
+                    self.vehicle_b.set_velocity(speed / 3.6, 1.0)
+                    if self.vehicle_a_damage['damage'] > 10:
+                        self.has_crash = True
                         self.last_sample_time = self.vehicle_a_timer["time"]
-                    if self.has_crash:
-                        if self.vehicle_a_timer["time"] - self.crash_time > self.delay_after_crash:
-                            break
-                    else:
-                        self.vehicle_b.control(0, brake=0, parkingbrake=0)
-                        self.vehicle_b.set_velocity(speed / 3.6, 1.0)
-                        if self.vehicle_a_damage['damage'] > 10:
-                            self.has_crash = True
-                            self.last_sample_time = self.vehicle_a_timer["time"]
-                            self.crash_time = self.vehicle_a_timer["time"]
-                            self.stop_car(self.vehicle_a)
-                            self.stop_car(self.vehicle_b)
-                self.vehicle_a.recover()
-                self.vehicle_b.recover()
-                self.scenario.restart()
+                        self.crash_time = self.vehicle_a_timer["time"]
+                        self.stop_car(self.vehicle_a)
+                        self.stop_car(self.vehicle_b)
+            self.vehicle_a.recover()
+            self.vehicle_b.recover()
+            self.output_a.close()
+            self.output_b.close()
+            self.bng.step(10)
+            self.scenario.restart()
 
     def run_crash_360_break(self, speed, step, break_dist):
         log.info('Running random crash setting.')
         for i in range(0, 360, step):
-            with open(os.path.abspath(f"../data/360/{i}.csv"), "w+") as self.output:
-                self.log_header()
+            self.output_a = open(os.path.abspath(
+                f"../data/360_break/{i}_a.csv"), "w+")
+            self.output_b = open(os.path.abspath(
+                f"../data/360_break/{i}_b.csv"), "w+")
+            self.log_header("a")
+            self.log_header("b")
 
-                self.vehicle_a.teleport(
-                    (0, 0, 0.2), angle_to_quat((0, 0, i)))
-                self.vehicle_b.teleport(
-                    (0, 150, 0.2), angle_to_quat((0, 0, 0)))
+            self.vehicle_a.teleport(
+                (0, 0, 0.2), angle_to_quat((0, 0, i)))
+            self.vehicle_b.teleport(
+                (0, 150, 0.2), angle_to_quat((0, 0, 0)))
 
-                self.bng.step(10)
+            self.bng.step(10)
 
-                self.vehicle_b.sensors.poll()
+            self.vehicle_b.sensors.poll()
+            self.vehicle_a.sensors.poll()
+
+            self.last_sample_time = self.vehicle_a_timer["time"]
+            self.has_crash = False
+            while True:
                 self.vehicle_a.sensors.poll()
-
-                self.last_sample_time = self.vehicle_a_timer["time"]
-                self.has_crash = False
-                while True:
-                    self.vehicle_a.sensors.poll()
-                    self.vehicle_b.sensors.poll()
-                    if self.vehicle_b_timer["time"] - self.last_sample_time >= 1 / self.sample_per_sec:
-                        self.log_line()
-                        self.last_sample_time = self.vehicle_a_timer["time"]
-                    if self.has_crash:
-                        if self.vehicle_a_timer["time"] - self.crash_time > self.delay_after_crash:
-                            break
+                self.vehicle_b.sensors.poll()
+                if self.vehicle_b_timer["time"] - self.last_sample_time >= 1 / self.sample_per_sec:
+                    self.log_line("a")
+                    self.log_line("b")
+                    self.last_sample_time = self.vehicle_a_timer["time"]
+                if self.has_crash:
+                    if self.vehicle_a_timer["time"] - self.crash_time > self.delay_after_crash:
+                        break
+                else:
+                    pos = self.vehicle_b_state["pos"]
+                    if (np.sqrt(pos[0]**2 + pos[1]**2) > break_dist):
+                        self.vehicle_b.control(0, brake=0, parkingbrake=0)
+                        self.vehicle_b.set_velocity(speed / 3.6, 1.0)
                     else:
-                        pos = self.vehicle_b_state["pos"]
-                        if (np.sqrt(pos[0]**2 + pos[1]**2) > break_dist):
-                            self.vehicle_b.control(0, brake=0, parkingbrake=0)
-                            self.vehicle_b.set_velocity(speed / 3.6, 1.0)
-                        else:
-                            self.vehicle_b.control(0, brake=1, parkingbrake=0)
-                        if self.vehicle_a_damage['damage'] > 10:
-                            self.has_crash = True
-                            self.last_sample_time = self.vehicle_a_timer["time"]
-                            self.crash_time = self.vehicle_a_timer["time"]
-                            self.stop_car(self.vehicle_a)
-                            self.stop_car(self.vehicle_b)
-                self.vehicle_a.recover()
-                self.vehicle_b.recover()
-                self.scenario.restart()
+                        self.vehicle_b.control(0, brake=1, parkingbrake=0)
+                    if self.vehicle_a_damage['damage'] > 10:
+                        self.has_crash = True
+                        self.last_sample_time = self.vehicle_a_timer["time"]
+                        self.crash_time = self.vehicle_a_timer["time"]
+                        self.stop_car(self.vehicle_a)
+                        self.stop_car(self.vehicle_b)
+            self.vehicle_a.recover()
+            self.vehicle_b.recover()
+            self.output_a.close()
+            self.output_b.close()
+            self.bng.step(10)
+            self.scenario.restart()
 
     def run_crash_wall(self, speed, step, break_dist):
         log.info('Running random crash setting.')
         j = 0
         for i in range(-70, 70, step):
-            with open(os.path.abspath(f"../data/360/{i}.csv"), "w+") as self.output:
-                self.log_header()
+            self.output_b = open(os.path.abspath(
+                f"../data/wall/{i}_b.csv"), "w+")
+            self.log_header("b")
 
-                pos_x = 100 + j * 20
-                self.vehicle_b.teleport(
-                    (pos_x, 150, 0.2), angle_to_quat((0, 0, 0)))
+            pos_x = 100 + j * 20
+            self.vehicle_b.teleport(
+                (pos_x, 150, 0.2), angle_to_quat((0, 0, 0)))
 
-                self.bng.switch_vehicle(self.vehicle_b)
+            self.bng.switch_vehicle(self.vehicle_b)
 
-                self.bng.step(10)
+            self.bng.step(10)
 
+            self.vehicle_b.sensors.poll()
+
+            self.last_sample_time = self.vehicle_b_timer["time"]
+            self.has_crash = False
+            while True:
                 self.vehicle_b.sensors.poll()
-
-                self.last_sample_time = self.vehicle_b_timer["time"]
-                self.has_crash = False
-                while True:
-                    self.vehicle_b.sensors.poll()
-                    if self.vehicle_b_timer["time"] - self.last_sample_time >= 1 / self.sample_per_sec:
-                        self.log_line()
-                        self.last_sample_time = self.vehicle_b_timer["time"]
-                    if self.has_crash:
-                        if self.vehicle_b_timer["time"] - self.crash_time > self.delay_after_crash:
-                            break
+                if self.vehicle_b_timer["time"] - self.last_sample_time >= 1 / self.sample_per_sec:
+                    self.log_line("b")
+                    self.last_sample_time = self.vehicle_b_timer["time"]
+                if self.has_crash:
+                    if self.vehicle_b_timer["time"] - self.crash_time > self.delay_after_crash:
+                        break
+                else:
+                    pos = self.vehicle_b_state["pos"]
+                    if (np.sqrt(pos[0]**2 + pos[1]**2) > break_dist):
+                        self.vehicle_b.control(0, brake=0, parkingbrake=0)
+                        self.vehicle_b.set_velocity(speed / 3.6, 1.0)
                     else:
-                        pos = self.vehicle_b_state["pos"]
-                        if (np.sqrt(pos[0]**2 + pos[1]**2) > break_dist):
-                            self.vehicle_b.control(0, brake=0, parkingbrake=0)
-                            self.vehicle_b.set_velocity(speed / 3.6, 1.0)
-                        else:
-                            self.vehicle_b.control(0, brake=1, parkingbrake=0)
-                        if self.vehicle_b_damage['damage'] > 10:
-                            self.has_crash = True
-                            self.last_sample_time = self.vehicle_b_timer["time"]
-                            self.crash_time = self.vehicle_b_timer["time"]
-                            self.stop_car(self.vehicle_b)
-                j += 1
-                self.vehicle_b.recover()
-                self.bng.step(10)
-                self.scenario.restart()
+                        self.vehicle_b.control(0, brake=1, parkingbrake=0)
+                    if self.vehicle_b_damage['damage'] > 10:
+                        self.has_crash = True
+                        self.last_sample_time = self.vehicle_b_timer["time"]
+                        self.crash_time = self.vehicle_b_timer["time"]
+                        self.stop_car(self.vehicle_b)
+            j += 1
+            self.output_b.close()
+            self.vehicle_b.recover()
+            self.bng.step(10)
+            self.scenario.restart()
 
     def run_abs(self, speed, step, break_dist):
         pass
@@ -260,23 +280,41 @@ class ImpactGenerator:
         vehicle.control(steering=0, throttle=0,
                         brake=1, parkingbrake=1, gear=0)
 
-    def log_header(self):
-        self.output.write(f"time,airspeed,gx,gy,gz,damage,crash_flag\n")
+    def log_header(self, vehicle: str):
+        if vehicle == "a":
+            self.output_a.write(f"time,airspeed,gx,gy,gz,damage,crash_flag\n")
+        else:
+            self.output_b.write(f"time,airspeed,gx,gy,gz,damage,crash_flag\n")
 
-    def get_csv_line(self):
-        time = self.vehicle_b_timer["time"]
-        airspeed = self.vehicle_b_electrics["airspeed"]
-        damage = self.vehicle_b_damage["damage"]
-        gx = self.vehicle_b_gforce["gx"]
-        gy = self.vehicle_b_gforce["gy"]
-        gz = self.vehicle_b_gforce["gz"]
-        current_damage = self.vehicle_b_damage["damage"]
-        crash_flag = current_damage > self.prev_frame_damage*1.0005
-        self.prev_frame_damage = current_damage
-        return f"{time},{airspeed},{gx},{gy},{gz},{round(damage)},{crash_flag}\n"
+    def get_csv_line(self, vehicle: str):
+        if vehicle == "a":
+            time = self.vehicle_a_timer["time"]
+            airspeed = self.vehicle_a_electrics["airspeed"]
+            damage = self.vehicle_a_damage["damage"]
+            gx = self.vehicle_a_gforce["gx"]
+            gy = self.vehicle_a_gforce["gy"]
+            gz = self.vehicle_a_gforce["gz"]
+            current_damage = self.vehicle_a_damage["damage"]
+            crash_flag = current_damage > self.prev_frame_damage*1.0005
+            self.prev_frame_damage = current_damage
+            return f"{time},{airspeed},{gx},{gy},{gz},{round(damage)},{crash_flag}\n"
+        else:
+            time = self.vehicle_b_timer["time"]
+            airspeed = self.vehicle_b_electrics["airspeed"]
+            damage = self.vehicle_b_damage["damage"]
+            gx = self.vehicle_b_gforce["gx"]
+            gy = self.vehicle_b_gforce["gy"]
+            gz = self.vehicle_b_gforce["gz"]
+            current_damage = self.vehicle_b_damage["damage"]
+            crash_flag = current_damage > self.prev_frame_damage*1.0005
+            self.prev_frame_damage = current_damage
+            return f"{time},{airspeed},{gx},{gy},{gz},{round(damage)},{crash_flag}\n"
 
-    def log_line(self):
-        self.output.write(self.get_csv_line())
+    def log_line(self, vehicle: str):
+        if vehicle == "a":
+            self.output_a.write(self.get_csv_line(vehicle))
+        else:
+            self.output_b.write(self.get_csv_line(vehicle))
 
     def run(self):
         log.info('Starting up BeamNG instance.')
@@ -289,7 +327,10 @@ class ImpactGenerator:
             # win32pipe.ConnectNamedPipe(self.dataPipeB, None)
 
             # pylint: disable-next = unused-variable
-            self.run_crash_wall(110, 5, 30)
+            for speed in [130, 110, 90, 50, 30]:
+                # self.run_crash_wall(speed, 20, 0)
+                # self.run_crash_360(speed, 20)
+                self.run_crash_360_break(speed, 20, 0)
         finally:
             # win32api.CloseHandle(self.dataPipeA)
             # win32api.CloseHandle(self.dataPipeB)
