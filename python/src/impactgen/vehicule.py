@@ -41,5 +41,16 @@ class Vehicule (Vehicle):
         self.prev_frame_damage = current_damage
         return f"{time},{airspeed},{gx},{gy},{gz},{round(damage)},{crash_flag}\n"
 
+    def set_speed(self, target_speed):
+        target_speed_ms = target_speed / 3.6
+        self.control(0, brake=0, parkingbrake=0)
+        self.set_velocity(target_speed_ms, 1.0)
+
+    def emmergency_break(self):
+        self.control(steering=0, throttle=0, brake=1, gear=0)
+
+    def park(self):
+        self.control(steering=0, throttle=0, brake=1, parkingbrake=1, gear=0)
+
     def log_line(self):
         self.output.write(self.get_csv_line())
